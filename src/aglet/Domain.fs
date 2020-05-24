@@ -1,6 +1,9 @@
 ﻿module Domain
 
+
 type IssueLabel = {
-    Name    : string
-    Color   : string
+    Name            : string
+    Description     : string
+    Color           : string
 }
+
