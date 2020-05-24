@@ -64,7 +64,13 @@ let main argv =
             |> Seq.iter (fun label ->
                 let backgroundColor = label.Color |> Colors.fromHex
                 let foregroundColor = Colors.toForegroundTextColor backgroundColor
-                Console.WriteLine(label.Name.Pastel((foregroundColor |> Colors.toHex false)).PastelBg((backgroundColor |> Colors.toHex false)))
+
+
+                Console.WriteLine(
+                    label.Name
+                    |> Console.setBackgroundColor backgroundColor
+                    |> Console.setForegroundColor foregroundColor
+                )
             )
 
     printfn "press any key to exit"

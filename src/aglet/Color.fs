@@ -170,3 +170,13 @@ module Colors =
 
     open System.IO
     open System 
+
+module Console =
+    open Colors
+    open Pastel
+
+    let setBackgroundColor (c:Color) (displayString: string) =
+        displayString.PastelBg((c |> toHex false))
+
+    let setForegroundColor (c:Color) (displayString: string) =
+        displayString.Pastel((c |> toHex false))
