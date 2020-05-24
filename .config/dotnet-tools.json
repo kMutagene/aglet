@@ -13,6 +13,12 @@
       "commands": [
         "paket"
       ]
+    },
+    "aglet": {
+      "version": "1.0.0",
+      "commands": [
+        "aglet"
+      ]
     }
   }
 }
