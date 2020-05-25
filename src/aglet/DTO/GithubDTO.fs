@@ -35,4 +35,31 @@ with
     }
             
 
-        
+type LabelPostRequest = {
+    [<JsonProperty("name")>]        
+    Name: string
+    [<JsonProperty("description")>] 
+    Description: string
+    [<JsonProperty("color")>]       
+    Color: string
+} 
+with 
+    static member ofJson (json:string) =  
+        json 
+        |> JsonConvert.DeserializeObject<LabelPostRequest>
+
+    static member toJson (lpr: LabelPostRequest) =  
+        lpr 
+        |> JsonConvert.SerializeObject
+
+    static member toDomain (dto: LabelPostRequest) : Domain.IssueLabel = {
+        Name = dto.Name
+        Color = dto.Color
+        Description = dto.Description  
+    }
+
+    static member fromDomain (dto: Domain.IssueLabel) : LabelPostRequest = {
+        Name = dto.Name
+        Color = dto.Color
+        Description = dto.Description  
+    }

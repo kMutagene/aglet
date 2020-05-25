@@ -30,6 +30,18 @@ module GithubApiRequests =
         |> Request.setHeader (
             UserAgent "aglet")
     
+    let createPostLabelRequest owner repo (labelDTO: DTO.Github.LabelPostRequest) =
+        Request.createUrl 
+            Post
+            (sprintf "https://api.github.com/repos/%s/%s/labels" owner repo)
+        |> Request.setHeader (
+            UserAgent "aglet")
+        Request.body(
+            RequestBody.BodyString 
+        )
+            
+
+
     let getResponse request = 
         job {
             let! response = getResponse request // disposed at the end of async, don't
