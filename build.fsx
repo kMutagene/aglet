@@ -37,9 +37,12 @@ let configuration = "Debug"
 
 let release = Fake.Core.ReleaseNotes.load "RELEASE_NOTES.md"
 
+let version = SemVer.parse release.NugetVersion
+
 Target.create "Clean" (fun _ ->
     !! "src/**/bin"
     ++ "src/**/obj"
+    ++ "src/**/nupkg"
     |> Shell.cleanDirs 
 )
 
@@ -77,19 +80,53 @@ Target.create "AssemblyInfo" (fun _ ->
 
 Target.create "Build" (fun _ ->
     !! "src/**/*.*proj"
-    |> Seq.iter (Fake.DotNet.DotNet.build id)
+    |> Seq.iter (Fake.DotNet.DotNet.build (fun p ->
+        let msBuildParams =
+            {p.MSBuildParams with 
+                Properties = ([
+                    "AssemblyVersion",(sprintf "%i.%i.%i" version.Major version.Minor version.Patch )
+                    "ProductVersion",(sprintf "%i.%i.%i" version.Major version.Minor version.Patch )
+                ] @ p.MSBuildParams.Properties)
+            }
+        {
+            p with MSBuildParams = msBuildParams
+        }
+    ))
 )
 
 Target.create "Pack" (fun _ ->
     !! "src/**/*.*proj"
-    |> Seq.iter (Fake.DotNet.DotNet.pack id)
+    |> Seq.iter (Fake.DotNet.DotNet.pack (fun p ->
+        let msBuildParams =
+            {p.MSBuildParams with 
+                Properties = ([
+                    "Version",(sprintf "%i.%i.%i" version.Major version.Minor version.Patch )
+                ] @ p.MSBuildParams.Properties)
+            }
+        {
+            p with MSBuildParams = msBuildParams
+        }
+    ))
+)
+
+
+let runDotNet cmd workingDir =
+    let result =
+        Fake.DotNet.DotNet.exec (Fake.DotNet.DotNet.Options.withWorkingDirectory workingDir) cmd ""
+    if result.ExitCode <> 0 then failwithf "'dotnet %s' failed in %s" cmd workingDir
+
+let packagedToolPath = Path.getFullName "./src/aglet/" 
+
+Target.create "InstallLocalTool" (fun _ ->
+    runDotNet "tool install --add-source nupkg aglet" packagedToolPath
 )
 
 Target.create "All" ignore
 
 "Clean"
-  ==> "AssemblyInfo"
   ==> "Build"
+  ==> "Pack"
+  ==> "InstallLocalTool"
   ==> "All"
 
 Target.runOrDefault "All"

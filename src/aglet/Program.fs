@@ -10,68 +10,91 @@ open HttpUtils
 open Color
 open Pastel
 
-
+type AthenticationMethod =
+    | Token = 1
+    | Env   = 2
 
 type CliArguments =
-    | AuthToken     of token:string
-    | AuthTokenEnv  of tokenEnvironmentVariable: string
-    | List_Labels   of repoOwner:string * repoName: string
+    | [<Mandatory>] Auth    of AthenticationMethod * value:string
+    | List_Labels           of repo:string
+    | Create_Labels         
+    | CopyLabels            of from_repo:string * to_repo:string
+
 with
     interface IArgParserTemplate with
         member s.Usage =
             match s with
-            | AuthToken _       -> "Github authentication token to use for Requests to the github api. Here is how you can reate one: https://help.github.com/en/github/authenticating-to-github/creating-a-personal-access-token-for-the-command-line:"
-            | AuthTokenEnv _    -> "the name of an environment variable that holds a github auth token"
-            | List_Labels       -> "List"
+            | Auth _            -> "How to authenticate at Github. token: raw string of a authentication token. env: name of an environment variable where your token is stored"
+            | List_Labels   _   -> "List all labels of the repository. <repo> must be of form 'owner:repoName'"
+            | Create_Labels _   -> "Create Labels interactively"
+            | CopyLabels    _   -> "copy labels from one repository to another. <from-repo> and <to-repo> must be of form 'owner:repoName'"
 
-let parser = ArgumentParser.Create<CliArguments>(programName = "dotnet-aglet")
+let parseRepoName (r:string) =
+    let split = r.Split(':')
+    if split.Length = 2 then
+        split.[0],split.[1]
+    else
+        failwith "invalid repo address format. It must be of form owner:repoName"
+
+let parseAuth a = 
+    match a with
+    | (AthenticationMethod.Token,t) -> t
+    | (AthenticationMethod.Env,env) ->
+        match Auth.tryGetAuthTokenFromEnv env with
+        | Some token -> token
+        | _ -> failwith "no valid token provided"
+    | _ ->  "no valid token provided"
+
+
+let errorHandler = ProcessExiter(colorizer = function ErrorCode.HelpText -> None | _ -> Some ConsoleColor.Red)
+
+let parser = ArgumentParser.Create<CliArguments>(programName = "aglet",errorHandler = errorHandler)
 
 let tryGetDefaultString (str: string option) =
     match str with
     | Some s -> s
     | None -> ""
 
-
-
 [<EntryPoint>]
 let main argv =
-    if argv.Length = 0 then
-        printfn "%s" (parser.PrintUsage(message ="no arguments provided."))
-    else
-        let parsedArgs = parser.ParseCommandLine(inputs=argv)
 
-        let authToken =
-            match parsedArgs.TryGetResult AuthToken with
-            | Some token -> token
-            | _ ->  match parsedArgs.TryGetResult AuthTokenEnv with
-                    | None     -> failwith "no valid token provided"
-                    | Some str -> 
-                        match Auth.tryGetAuthTokenFromEnv str with
-                        | Some token -> token
-                        | _ -> failwith "no valid token provided"
+    printfn "\r\n"
 
-        if (parsedArgs.Contains List_Labels) then
-            let owner,repo = (parsedArgs.TryGetResult List_Labels).Value
-            let allLabels = 
-                GithubApiRequests.createGetLabelRequest owner repo
-                |> GithubApiRequests.setAuth authToken
-                |> GithubApiRequests.getResponse
-                |> GithubApiRequests.getResponseBody
-                |> DTO.Github.LabelInfoResponse.ofJsonArray
-                |> Array.map DTO.Github.LabelInfoResponse.toDomain
+    let parsedArgs      = parser.ParseCommandLine(argv)
+    let authToken       = parsedArgs.PostProcessResult (Auth, parseAuth)
+    let listRepo        = parsedArgs.TryPostProcessResult (List_Labels, parseRepoName)
+    let copyLabelRepos  = parsedArgs.TryPostProcessResult (CopyLabels, (fun (f,t) -> (parseRepoName f , parseRepoName t)))
 
-            allLabels
-            |> Seq.iter (fun label ->
-                let backgroundColor = label.Color |> Colors.fromHex
-                let foregroundColor = Colors.toForegroundTextColor backgroundColor
+    printfn "parsedArgs:\r\n"
 
+    parsedArgs
+        .GetAllResults()
+        |> List.iter (fun x -> x.ToString() |> Console.WriteLine)
 
-                Console.WriteLine(
-                    label.Name
-                    |> Console.setBackgroundColor backgroundColor
-                    |> Console.setForegroundColor foregroundColor
-                )
+    match listRepo,copyLabelRepos with
+    | Some (lOwner,lRepo), None -> 
+        let allLabels = 
+            GithubApiRequests.createGetLabelRequest lOwner lRepo
+            |> GithubApiRequests.setAuth authToken
+            |> GithubApiRequests.getResponse
+            |> GithubApiRequests.getResponseBody
+            |> DTO.Github.LabelInfoResponse.ofJsonArray
+            |> Array.map DTO.Github.LabelInfoResponse.toDomain
+
+        allLabels
+        |> Seq.iter (fun label ->
+            let backgroundColor = label.Color |> Colors.fromHex
+            let foregroundColor = Colors.toForegroundTextColor backgroundColor
+            Console.WriteLine(
+                label.Name
+                |> Console.setBackgroundColor backgroundColor
+                |> Console.setForegroundColor foregroundColor
             )
+        )
+    | None, Some ((fromOwner,fromRepo),(toOwner,toRepo)) ->
+        Console.WriteLine "not implemented yet."
+
+    | _ -> ()
 
     printfn "press any key to exit"
     Console.ReadLine() |> ignore
