@@ -58,8 +58,8 @@ with
         Description = dto.Description  
     }
 
-    static member fromDomain (dto: Domain.IssueLabel) : LabelPostRequest = {
-        Name = dto.Name
-        Color = dto.Color
-        Description = dto.Description  
+    static member fromDomain (dom: Domain.IssueLabel) : LabelPostRequest = {
+        Name = dom.Name
+        Color = dom.Color.Replace("#","")
+        Description = dom.Description  
     }

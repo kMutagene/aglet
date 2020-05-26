@@ -7,14 +7,23 @@
     <ToolCommandName>aglet</ToolCommandName>
     <PackageOutputPath>./nupkg</PackageOutputPath>
     <ServerGarbageCollection>true</ServerGarbageCollection>
+    <Authors>Kevin Schneider</Authors>
+    <Company />
+    <Description>A github label editing tool (aglet) is not only a cap for shoelaces but now also a dotnet tool to edit labels of github repositories
+</Description>
+    <PackageProjectUrl>https://github.com/kMutagene/aglet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/kMutagene/aglet</RepositoryUrl>
+    <PackageReleaseNotes>* Fix some console output
+ * Add diff so already present labels are not attempted to be created
+</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Color.fs" />
-    <Compile Include="Playground\githubApi.fsx" />
     <Compile Include="Domain.fs" />
     <Compile Include="DTO\GithubDTO.fs" />
     <Compile Include="Auth.fs" />
     <Compile Include="HttpUtils.fs" />
+    <None Include="Playground\githubApi.fsx" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

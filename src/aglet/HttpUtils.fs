@@ -4,6 +4,7 @@ open Hopac
 open HttpFs
 open HttpFs.Client
 open Auth
+open DTO.Github
 
 module internal Request =
            
@@ -20,7 +21,7 @@ module GithubApiRequests =
     let setAuth (authToken:string) (r:Request) =
         r
         |> Request.setHeader(
-            Authorization authToken
+            Authorization (sprintf "token %s" authToken)
         )
 
     let createGetLabelRequest owner repo =
@@ -36,8 +37,8 @@ module GithubApiRequests =
             (sprintf "https://api.github.com/repos/%s/%s/labels" owner repo)
         |> Request.setHeader (
             UserAgent "aglet")
-        Request.body(
-            RequestBody.BodyString 
+        |> Request.body(
+            RequestBody.BodyString (LabelPostRequest.toJson labelDTO)
         )
             
 
@@ -62,3 +63,6 @@ module GithubApiRequests =
         res
         |> Response.readBodyAsString
         |> run
+
+    let isSuccess (res:Response) =
+        (res.statusCode > 199 ) && (res.statusCode < 300)
