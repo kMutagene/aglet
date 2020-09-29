@@ -5,7 +5,7 @@ open Domain
 
 type LabelInfoResponse = {
     [<JsonProperty("id")>]         
-    ID: int
+    ID: int64
     [<JsonProperty("node_id")>]     
     NodeId : string
     [<JsonProperty("url")>]        
