@@ -49,6 +49,7 @@ type CopyLabelsArguments =
 
 type AgletCliArguments =
     | [<Mandatory>]                 Auth    of AthenticationMethod * value:string
+    |                               Debug
     | [<CliPrefix(CliPrefix.None)>] List    of ParseResults<ListLabelsArguments>
     | [<CliPrefix(CliPrefix.None)>] Create  of ParseResults<CreateLabelsArguments>
     | [<CliPrefix(CliPrefix.None)>] Copy    of ParseResults<CopyLabelsArguments>
@@ -57,7 +58,8 @@ with
         member s.Usage =
             match s with
             | Auth   _  -> "How to authenticate at Github. token: raw string of a authentication token. env: name of an environment variable where your token is stored"
-            | List   _  -> "List all labels of the repository. <repo> must be of form 'owner:repoName'"
+            | Debug     -> "Print infortation usefull for debugging aglet"
+            | List   _  -> "List all labels of the repository. <repo> must be of form 'owner/repoName'"
             | Create _  -> "Create Labels in a repository. Labels can be created interactively or taken from a json source."
             | Copy   _  -> "Copy labels from one repository to another. <from-repo> and <to-repo> must be of form 'owner/repoName'"
 
@@ -87,16 +89,6 @@ let tryGetDefaultString (str: string option) =
     | Some s -> s
     | None -> ""
 
-module ApiFunctions =
-
-    let getAllLabels owner repo authToken = 
-        GithubApiRequests.createGetLabelRequest owner repo
-        |> GithubApiRequests.setAuth authToken
-        |> GithubApiRequests.getResponse
-        |> GithubApiRequests.getResponseBody
-        |> DTO.Github.LabelInfoResponse.ofJsonArray
-        |> Array.map DTO.Github.LabelInfoResponse.toDomain
-
 module ConsoleFormatting  =
     
     let formatLabelConsoleOutput (label:IssueLabel) =
@@ -107,6 +99,35 @@ module ConsoleFormatting  =
         |> Console.setBackgroundColor backgroundColor
         |> Console.setForegroundColor foregroundColor
         
+module ApiFunctions =
+
+    let getAllLabels owner repo authToken = 
+        GithubApiRequests.createGetLabelRequest owner repo
+        |> GithubApiRequests.setAuth authToken
+        |> GithubApiRequests.getResponse
+        |> GithubApiRequests.getResponseBody
+        |> DTO.Github.LabelInfoResponse.ofJsonArray
+        |> Array.map DTO.Github.LabelInfoResponse.toDomain
+
+    let createLabel owner repo authToken label = 
+        let req =
+            label
+            |> DTO.Github.LabelPostRequest.fromDomain
+            |> GithubApiRequests.createPostLabelRequest owner repo
+            |> GithubApiRequests.setAuth authToken
+     
+        let res = req |> GithubApiRequests.getResponse
+        
+        if HttpUtils.GithubApiRequests.isSuccess res then 
+            "label ".Pastel("#00FF00")
+            + (label |> ConsoleFormatting.formatLabelConsoleOutput)
+            + (sprintf " successfully created in %s:%s\r\n" owner repo).Pastel("#00FF00")
+            |> Console.WriteLine
+        else
+            "failed to create label ".Pastel("#FF0000")
+            + (label |> ConsoleFormatting.formatLabelConsoleOutput)
+            + (sprintf " in %s:%s\r\n" owner repo).Pastel("#FF0000")
+            |> Console.WriteLine
 
 [<AutoOpen>]
 module MessagePrompts =
@@ -131,23 +152,85 @@ let main argv =
     let parsedArgs      = parser.ParseCommandLine(argv)
 
     let authToken       = parsedArgs.PostProcessResult (Auth, parseAuth)
+    let isDebug         = (parsedArgs.TryGetResult(Debug)).IsSome
 
-    let listArgs        = parsedArgs.GetResults(List)
-    let createArgs      = parsedArgs.GetResults(Create)
-    let copyArgs        = parsedArgs.GetResults(Copy)
+    let listArgs        = parsedArgs.TryGetResult(List)
+    let createArgs      = parsedArgs.TryGetResult(Create)
+    let copyArgs        = parsedArgs.TryGetResult(Copy)
 
-    parsedArgs
-        .GetAllResults()
-        |> List.iter (fun x -> x.ToString() |> Console.WriteLine)
+    if isDebug then 
+        printfn "Parsed Arguments:/r/n"
+        parsedArgs
+            .GetAllResults()
+            |> List.iter (fun x -> x.ToString() |> Console.WriteLine)
 
     match listArgs,createArgs,copyArgs with
-    | repo::_,[],[] ->
+    | Some repo,_,_ ->
         let owner,repo = repo.PostProcessResult(ListLabelsArguments.Source_Repo,parseRepoName)
+
+        "Found the following labels in ".Pastel("#00FF00")
+        + (sprintf "%s/%s" owner repo).Pastel("#0000FF").PastelBg("#FFFFFF")
+        |> Console.WriteLine
+
         ApiFunctions.getAllLabels owner repo authToken
         |> Array.iter (ConsoleFormatting.formatLabelConsoleOutput >> Console.WriteLine)
 
-    | [],cArgs,[] when cArgs.Length > 0 -> 
-        ()
+    | _,Some cArgs,_ ->
+        printfn "soos?"
+
+    | _,_,Some cArgs -> 
+        let fromOwner,fromRepo = cArgs.PostProcessResult(CopyLabelsArguments.Source_Repo,parseRepoName)
+        let toOwner,toRepo = cArgs.PostProcessResult(CopyLabelsArguments.Target_Repo,parseRepoName)
+        let interactive = (cArgs.TryGetResult(CopyLabelsArguments.Interactive)).IsSome
+
+        let fromLabels = ApiFunctions.getAllLabels fromOwner fromRepo authToken
+        let toLabels = ApiFunctions.getAllLabels toOwner toRepo authToken
+        
+        let labelNamesAlreadyThere = toLabels |> Array.map (fun x -> x.Name)
+        
+        let labelsAlreadyThere = 
+            fromLabels
+            |> Array.filter ( fun label ->
+                (Array.contains label.Name labelNamesAlreadyThere )
+            )
+        let diff =
+            fromLabels
+            |> Array.filter ( fun label ->
+                not (Array.contains label.Name labelNamesAlreadyThere )
+            )
+
+        Console.WriteLine((sprintf "%s:%s already contains the following labels:\r\n" fromOwner fromRepo))
+
+        labelsAlreadyThere
+        |> Seq.iter (ConsoleFormatting.formatLabelConsoleOutput >> Console.WriteLine)
+        
+        printfn "\r\n"
+        
+        Console.WriteLine((sprintf "The following new labels will be created in %s:%s\r\n" toOwner toRepo).Pastel("#00FF00"))
+        
+        printfn "\r\n"
+
+        diff
+        |> Seq.iter (ConsoleFormatting.formatLabelConsoleOutput >> Console.WriteLine)
+        
+        if interactive then 
+            printfn "=============================================================\r\nStarting interactive label copy process\r\n============================================================="
+            diff
+            |> Seq.iter (fun label ->
+                label |> ConsoleFormatting.formatLabelConsoleOutput |> Console.WriteLine
+                if MessagePrompts.promptYesNo (sprintf "Copy this label to %s:%s? (y/n)" toOwner toRepo) then 
+                    label
+                    |> ApiFunctions.createLabel toOwner toRepo authToken
+                else 
+                    "Skipping ".Pastel("#FF0000")
+                    + (label |> ConsoleFormatting.formatLabelConsoleOutput)
+                    |> Console.WriteLine
+            )
+        elif MessagePrompts.promptYesNo (sprintf "Copy all these labels to %s:%s? (y/n)" toOwner toRepo) then 
+            diff
+            |> Array.iter (ApiFunctions.createLabel toOwner toRepo authToken)
+        else 
+            ()
     | _ -> ()
 
     //match listRepo,copyLabelRepos with
